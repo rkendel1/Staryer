@@ -5,7 +5,7 @@ import { AlertCircle, CheckCircle,FileImage, Upload, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { cn } from '@/utils';
+import { cn } from '@/utils/cn';
 
 interface FileUploadProps {
   accept?: string;

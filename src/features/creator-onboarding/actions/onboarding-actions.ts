@@ -14,6 +14,7 @@ import { generateAutoGradient } from '@/utils/gradient-utils';
 import { getBrandingSuggestions, getOrCreateCreatorProfile, updateCreatorProfile } from '../controllers/creator-profile';
 import { generateStripeOAuthLink } from '../controllers/stripe-connect';
 import { createWhiteLabeledPage } from '../controllers/white-labeled-pages';
+import { BackgroundTaskService } from '../services/background-tasks';
 import type { CreatorProfile, CreatorProfileUpdate } from '../types';
 
 export async function updateCreatorProfileAction(profileData: CreatorProfileUpdate) {
@@ -35,7 +36,7 @@ export async function updateCreatorProfileAction(profileData: CreatorProfileUpda
   return updatedProfile;
 }
 
-export async function createStripeConnectAccountAction(): Promise<{ onboardingUrl: string }> {
+export async function createStripeConnectAccountAction(environment: 'test' | 'production' = 'test'): Promise<{ stripeConnectUrl: string }> {
   const user = await getAuthenticatedUser();
 
   if (!user?.id || !user.email) {
@@ -43,13 +44,13 @@ export async function createStripeConnectAccountAction(): Promise<{ onboardingUr
   }
 
   try {
-    // Generate the OAuth link for Standard accounts, specifying the 'creator' flow
-    const onboardingUrl = await generateStripeOAuthLink(user.id, user.email, 'creator');
+    // Generate the OAuth link for Standard accounts, specifying the 'creator' flow and environment
+    const stripeConnectUrl = await generateStripeOAuthLink(user.id, user.email, 'creator', environment);
 
     // We don't update stripe_account_id here, it will be updated in the callback route
     // after the user completes the OAuth flow.
 
-    return { onboardingUrl };
+    return { stripeConnectUrl };
   } catch (error) {
     console.error('Error generating Stripe OAuth link:', error);
     throw new Error('Failed to generate Stripe Connect link');
@@ -279,6 +280,7 @@ export async function completeOnboardingAction() {
   // Mark onboarding as complete
   const updatedProfile = await updateCreatorProfile(user.id, {
     onboarding_completed: true,
+    onboarding_completed_date: new Date().toISOString(),
   });
 
   // Revalidate relevant paths
@@ -288,6 +290,9 @@ export async function completeOnboardingAction() {
     revalidatePath(`/c/${updatedProfile.page_slug}`);
     revalidatePath(`/c/${updatedProfile.page_slug}/pricing`);
   }
+
+  // Queue background tasks for automatic white-label generation
+  BackgroundTaskService.queueCreatorTasks(user.id, updatedProfile);
 
   return updatedProfile;
 }
